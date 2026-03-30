@@ -1,21 +1,30 @@
 import { defineStore } from 'pinia'
 
+let id = 0;
+
 export const useAlertStore = defineStore('alert', {
   state: () => ({
-    message: '',
-    type: 'success',
+    toasts: [] // [{ id, header, message, type }]
   }),
   actions: {
-    setMessage(msg, type = 'success') {
-      this.message = msg
-      this.type = type
+    addToast(message, header = '', type = 'success', duration = 3000) {
+      const newToast = {
+        id: id++,
+        header,
+        message,
+        type
+      };
+
+      this.toasts.push(newToast);
+
+      // auto remove
       setTimeout(() => {
-        this.clearMessage();
-      }, 3000);
+        this.removeToast(newToast.id);
+      }, duration);
     },
-    clearMessage() {
-      this.message = ''
-      this.type = 'success'
+    removeToast(id) {
+      this.toasts = this.toasts.filter(t => t.id !== id);
     }
   }
-})
+});
+

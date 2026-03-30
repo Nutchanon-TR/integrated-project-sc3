@@ -1,6 +1,51 @@
+import { jwtDecode } from "jwt-decode";
+import { authFetch } from "./apiAuth";
 const VITE_ROOT_API_URL = import.meta.env.VITE_ROOT_API_URL;
 const urlV1 = `${VITE_ROOT_API_URL}/itb-mshop/v1/sale-items`;
 const urlV2 = `${VITE_ROOT_API_URL}/itb-mshop/v2/sale-items`;
+
+async function getImageByImageName(imgName) {
+  try {
+    // แก้ไขตรงนี้: เพิ่ม imgName เข้าไปใน URL
+    const res = await fetch(`${urlV2}/file/${imgName}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        // สามารถจัดการ error 404 ให้เฉพาะเจาะจงได้
+        return { error: "Image not found" };
+      }
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+
+    const imageBlob = await res.blob();
+    const imageUrl = URL.createObjectURL(imageBlob);
+    return imageUrl;
+  } catch (error) {
+    // ปรับปรุงการจัดการ error ให้แสดงข้อความที่เข้าใจง่ายขึ้น
+    throw new Error(`Failed to fetch image: ${error.message}`);
+  }
+}
+
+async function getViewStorageForSelect() {
+  try {
+    const res = await fetch(`${urlV2}/storages`);
+    if (!res.ok) {
+      if (res.status === 404) {
+        return { error: "not_found" };
+      }
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+    const SaleItem = await res.json();
+    return SaleItem;
+  } catch (error) {
+    throw new Error(`Fetch failed: ${error.message}`);
+  }
+}
 
 async function getAllSaleItemV1() {
   try {
@@ -23,19 +68,48 @@ const getAllSaleItemV2 = async (
   sortField,
   sortDirection,
   size,
-  page
+  page,
+  filterStorages = [],
+  filterPriceLower = null,
+  filterPriceUpper = null,
+  search = ""
 ) => {
   filterBrand = filterBrand || [];
+  filterStorages = filterStorages || [];
 
   const params = new URLSearchParams();
+
+  // Filter brands
   filterBrand.forEach((brand) => {
     params.append("filterBrands", brand || "");
   });
+
+  // Filter storages
+  filterStorages.forEach((storage) => {
+    params.append("filterStorages", storage || "");
+  });
+
+  // Price range filters
+  if (filterPriceLower !== null && filterPriceLower !== "") {
+    params.append("filterPriceLower", filterPriceLower);
+  }
+  if (filterPriceUpper !== null && filterPriceUpper !== "") {
+    params.append("filterPriceUpper", filterPriceUpper);
+  }
+
+  // เพิ่ม search keyword
+  if (search && search.trim() !== "") {
+    params.append("searchParam", search.trim());
+  }
+
+  // Sorting and pagination
   params.append("sortField", sortField || "createdOn");
   params.append("sortDirection", sortDirection || "desc");
   params.append("size", size || 10);
   params.append("page", page || 0);
+
   const pathInput = params.toString();
+  // console.log("API Call URL:", `${urlV2}?${pathInput}`);
 
   try {
     const res = await fetch(`${urlV2}?${pathInput}`);
@@ -52,9 +126,145 @@ const getAllSaleItemV2 = async (
   }
 };
 
+//SaleItem Seller
+//use authFetch
+//=============================================================================
+
+const getAllSaleItemSeller = async (size, page) => {
+  const accessToken = localStorage.getItem("accessToken"); // ดึงจาก localStorage
+  const decoded = jwtDecode(accessToken);
+
+  // console.log("Decoded JWT in :", decoded);
+  // console.log("Decoded JWT in getAllSaleItemSeller:", decoded.sellerId);
+
+  if (!accessToken) {
+    throw new Error("No access token found in localStorage");
+  }
+
+  // console.log(accessToken);
+
+  const params = new URLSearchParams();
+  params.append("size", size);
+  // params.append("sortField", sortField);
+  params.append("page", page);
+
+  const url = `${VITE_ROOT_API_URL}/itb-mshop/v2/sellers/${decoded.sellerId}/sale-items?${params.toString()}`;
+
+  // console.log("API Call URL:", url);
+
+  try {
+    const res = await authFetch(url, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`, // ใช้ token จาก localStorage
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return { error: "not_found" };
+      }
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+
+    const saleItems = await res.json();
+    return saleItems;
+  } catch (error) {
+    throw new Error(`Fetch failed: ${error.message}`);
+  }
+};
+
+async function createSaleItem(formData) {
+  const accessToken = localStorage.getItem("accessToken");
+  const decoded = jwtDecode(accessToken);
+
+  const url = `${VITE_ROOT_API_URL}/itb-mshop/v2/sellers/${decoded.sellerId}/sale-items`;
+  // console.log("API Call URL CREATE:", url);
+
+
+  const res = await authFetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || "Failed to create sale item");
+  }
+
+  return res.json();
+}
+
+async function updateSaleItemSeller(id, updatedSaleItem) {
+  const accessToken = localStorage.getItem("accessToken");
+  const decoded = jwtDecode(accessToken);
+
+  const url = `${VITE_ROOT_API_URL}/itb-mshop/v2/sellers/${decoded.sellerId}/sale-items/${id}`
+  // console.log("API Call URL UPDATE:", url);
+
+  const res = await authFetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: updatedSaleItem,
+  });
+
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || "Failed to create sale item");
+  }
+
+  return res.json();
+}
+
+async function deleteSaleItemSeller(id) {
+  const accessToken = localStorage.getItem("accessToken");
+  const decoded = jwtDecode(accessToken);
+
+  const url = `${VITE_ROOT_API_URL}/itb-mshop/v2/sellers/${decoded.sellerId}/sale-items/${id}`
+  // console.log("API Call URL DELETE:", url);
+
+  const res = await authFetch(url, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  // console.log(res);
+
+  if (!res.ok) {
+  // console.log(res);
+    const err = await res.json();
+    throw new Error(err.message || "Failed to create sale item");
+  }
+  if (res.status === 204) {
+    return
+  }
+  return res.json();
+
+}
+
+//=============================================================================
+
 async function getSaleItemById(id) {
   try {
     const SaleItem = await fetch(`${urlV1}/${id}`);
+    if (SaleItem.status === 404) return undefined;
+    const finalSaleItem = await SaleItem.json();
+    return finalSaleItem;
+  } catch (error) {
+    throw new Error(error);
+  }
+}
+
+async function getSaleItemByIdV2(id) {
+  try {
+    const SaleItem = await fetch(`${urlV2}/${id}`);
     if (SaleItem.status === 404) return undefined;
     const finalSaleItem = await SaleItem.json();
     return finalSaleItem;
@@ -78,6 +288,46 @@ async function addSaleItem(newSaleItem) {
     return addedSaleItem;
   } catch (error) {
     throw new Error("can not add your SaleItem");
+  }
+}
+
+//addSaleItemV2 that add to be form data
+async function addSaleItemV2(newSaleItem) {
+  try {
+    const response = await fetch(`${VITE_ROOT_API_URL}/itb-mshop/v2`, {
+      method: "POST",
+      body: newSaleItem,
+    });
+
+    // ตรวจสอบสถานะการตอบกลับ
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        errorData.message || `HTTP error! status: ${response.status}`
+      );
+    }
+
+    return await response.json(); // หรือ return response ตามที่ต้องการ
+  } catch (error) {
+    console.error("Error adding sale item:", error);
+    throw new Error(error.message || "Cannot add your SaleItem");
+  }
+}
+
+//updateSaleItemV2 function to update sale item by id
+async function updateSaleItemV2(id, updatedSaleItem) {
+  try {
+    const res = await fetch(`${urlV2}/${id}`, {
+      method: "PUT",
+      body: updatedSaleItem,
+    });
+    if (!res.ok) {
+      throw new Error("Failed to update SaleItem");
+    }
+    const updatedResponse = await res.json();
+    return updatedResponse;
+  } catch (error) {
+    throw new Error("Cannot update your SaleItem");
   }
 }
 
@@ -114,48 +364,122 @@ const deleteSaleItemById = async (id) => {
 
   return res.status === 204;
 };
+const deleteSaleItemByIdV2 = async (id) => {
+  const res = await fetch(`${urlV2}/${id}`, {
+    method: "DELETE",
+  });
 
-// ดึงข้อมูลแบบมี pagination/filter/sort ผ่าน query
-const getAllSaleItemPage = async ({
-  filterBrands = [],
-  page = 0,
-  size = 10,
-  sortField = null,
-  sortDirection = "desc",
-} = {}) => {
-  const params = new URLSearchParams();
-
-  if (filterBrands.length > 0) {
-    filterBrands.forEach((brand) => params.append("filterBrands", brand));
-  }
-  params.append("page", page);
-  params.append("size", size);
-  if (sortField) {
-    params.append("sortField", sortField);
-    params.append("sortDirection", sortDirection);
+  if (!res.ok) {
+    const error = new Error("Request failed");
+    error.status = res.status;
+    error.json = () => res.json();
+    throw error;
   }
 
-  const fullUrl = `${urlV1}?${params.toString()}`;
-  console.log(fullUrl);
+  return res.status === 204;
+};
 
+//------------------------ API cart & Order ----------------------------------
+const fetchSellers = async (ids) => {
   try {
-    const res = await fetch(fullUrl);
+    const idsParam = ids.join(','); // เช่น "1,2,3"
+  const token = localStorage.getItem('accessToken');
+  // console.log(token);
+    if (!token) throw new Error('No access token found');
+
+    const res = await authFetch(`${VITE_ROOT_API_URL}/itb-mshop/v2/cart/sellers/${idsParam}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + token
+      }
+    });
+
     if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
+      throw new Error('Failed to fetch sellers: ' + res.status);
     }
-    const SaleItem = await res.json();
-    return SaleItem;
+
+  const data = await res.json();
+  // console.log('Sellers:', data);
+    return data;
   } catch (error) {
-    throw new Error(`Fetch failed: ${error.message}`);
+    console.error(error);
+    return [];
   }
 };
+
+const createOrder = async (orders) => {
+  try {
+    const token = localStorage.getItem("accessToken");
+    if (!token) throw new Error("No access token found");
+
+    const res = await authFetch(`${VITE_ROOT_API_URL}/itb-mshop/v2/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token,
+      },
+      body: JSON.stringify(orders),
+    });
+
+    if (!res.ok) {
+      throw new Error("Failed to create order: " + res.status);
+    }
+
+  const data = await res.json();
+  // console.log("Order Response:", data);
+    return data;
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+};
+
+const setOrderStatus = async (id) => {
+  try {
+    const token = localStorage.getItem("accessToken");
+    if (!token) throw new Error("No access token found");
+
+    const res = await authFetch(`${VITE_ROOT_API_URL}/itb-mshop/v2/order-status/${id}`, {
+      method: "PUT",
+      headers: {
+        "Authorization": "Bearer " + token,
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error("Failed to update order status: " + res.status);
+    }
+
+  const data = await res.json();
+  // console.log("Updated Order:", data);
+    return data;
+  } catch (error) {
+    console.error("Error updating order status:", error);
+    return null;
+  }
+}
+
+
+
 
 export {
   getAllSaleItemV1,
   getAllSaleItemV2,
+  getAllSaleItemSeller,
   getSaleItemById,
   addSaleItem,
   updateSaleItem,
   deleteSaleItemById,
-  getAllSaleItemPage,
+  deleteSaleItemByIdV2,
+  getSaleItemByIdV2,
+  getImageByImageName,
+  addSaleItemV2,
+  getViewStorageForSelect,
+  updateSaleItemV2,
+  createSaleItem,
+  updateSaleItemSeller,
+  deleteSaleItemSeller,
+  fetchSellers,
+  createOrder,
+  setOrderStatus,
 };

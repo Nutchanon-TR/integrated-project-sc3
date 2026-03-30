@@ -1,17 +1,17 @@
 package sit.int221.sc3_server;
 
-import jakarta.annotation.PostConstruct;
 import org.modelmapper.ModelMapper;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.ui.ModelMap;
+import org.springframework.scheduling.annotation.EnableAsync;
+import sit.int221.sc3_server.configuration.FileStorageProperties;
 import sit.int221.sc3_server.utils.ListMapper;
 
-import java.util.Locale;
-import java.util.TimeZone;
-
+@EnableConfigurationProperties({FileStorageProperties.class})
 @SpringBootApplication
+@EnableAsync
 public class Sc3ServerApplication {
 
 	public static void main(String[] args) {
@@ -22,8 +22,5 @@ public class Sc3ServerApplication {
 	public ListMapper listMapper(){
 		return ListMapper.getInstance();
 	}
-	@Bean
-	public ModelMapper modelMapper() {
-		return new ModelMapper();
-	}
+
 }

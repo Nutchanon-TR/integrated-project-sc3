@@ -1,0 +1,38 @@
+package sit.int221.sc3_server.repository.saleItem;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
+import sit.int221.sc3_server.entity.SaleItem;
+import sit.int221.sc3_server.entity.SaleItemImage;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
+public interface SaleItemImageRepository extends JpaRepository<SaleItemImage, Integer> {
+
+    @Query("""
+    select p.fileName from SaleItemImage p
+    where p.fileName = :fileName
+""")
+    String findFileName(
+            @Param("fileName") String fileName
+    );
+
+    @Query("""
+    select p.fileName from SaleItemImage p 
+    where (:saleItemId is null or p.saleItem.id = :saleItemId)
+    and (p.imageViewOrder = 1)
+""")
+    String findBySaleItemId(@Param("saleItemId") int id);
+
+    Optional<SaleItemImage> findByFileNameAndSaleItem(String fileName, SaleItem saleItem);
+
+
+    List<SaleItemImage> findBySaleItem(SaleItem existing);
+
+    List<SaleItemImage> findAllBySaleItemAndFileNameIn(SaleItem saleItem, Collection<String> fileNames);
+}
